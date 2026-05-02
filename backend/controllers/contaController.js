@@ -53,6 +53,11 @@ const pagarConta = async (req, res) => {
     }
 
     const saldoAtual = await contaModel.getSaldo();
+
+    if (saldoAtual < conta.valor) {
+      return res.status(400).json({ success: false, error: 'Saldo insuficiente.' });
+    }
+
     const novoSaldo = saldoAtual - conta.valor;
 
     await contaModel.pagarConta(id, novoSaldo);
