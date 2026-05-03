@@ -1,125 +1,62 @@
-const db = require('../database/db');
+const { getDb, saveDb } = require('../database/db');
 
-const getAllContas = () => {
-  return new Promise((resolve, reject) => {
-    db.all('SELECT * FROM contas ORDER BY id', (err, rows) => {
-      if (err) {
-        return reject(err);
-      }
-      resolve(rows);
-    });
-  });
+const getAllContas = async () => {
+  const db = await getDb();
+  const result = db.exec('SELECT * FROM contas ORDER BY id');
+  if (result.length === 0) return [];
+  const { columns, values } = result[0];
+  return values.map(row => Object.fromEntries(columns.map((col, i) => [col, row[i]])));
 };
 
-const getContaById = (id) => {
-  return new Promise((resolve, reject) => {
-    db.get('SELECT * FROM contas WHERE id = ?', [id], (err, row) => {
-      if (err) {
-        return reject(err);
-      }
-      resolve(row);
-    });
-  });
+const getContaById = async (id) => {
+  const db = await getDb();
+  const result = db.exec('SELECT * FROM contas WHERE id = ?', [id]);
+  if (result.length === 0) return null;
+  const { columns, values } = result[0];
+  return Object.fromEntries(columns.map((col, i) => [col, values[0][i]]));
 };
 
-const createConta = (nome, valor, data) => {
-  return new Promise((resolve, reject) => {
-    const query = 'INSERT INTO contas (nome, valor, data, status) VALUES (?, ?, ?, ?)';
-    const params = [nome, valor, data, 'pendente'];
-
-    db.run(query, params, function (err) {
-      if (err) {
-        return reject(err);
-      }
-
-      resolve({
-        id: this.lastID,
-        nome,
-        valor,
-        data,
-        status: 'pendente',
-      });
-    });
-  });
+const createConta = async (nome, valor, data) => {
+  const db = await getDb();
+  db.run('INSERT INTO contas (nome, valor, data, status) VALUES (?, ?, ?, ?)', [nome, valor, data, 'pendente']);
+  const result = db.exec('SELECT last_insert_rowid() as id');
+  const id = result[0].values[0][0];
+  saveDb();
+  return { id, nome, valor, data, status: 'pendente' };
 };
 
-const pagarConta = (id, novoSaldo) => {
-  return new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION', (beginErr) => {
-        if (beginErr) {
-          return reject(beginErr);
-        }
-
-        db.run(
-          'UPDATE contas SET status = ? WHERE id = ? AND status = ?',
-          ['pago', id, 'pendente'],
-          function (updateErr) {
-            if (updateErr) {
-              return db.run('ROLLBACK', () => reject(updateErr));
-            }
-
-            if (this.changes === 0) {
-              return db.run('ROLLBACK', () => reject(new Error('Conta não encontrada ou já paga.')));
-            }
-
-            db.run('UPDATE saldo SET valor = ? WHERE id = 1', [novoSaldo], function (saldoErr) {
-              if (saldoErr) {
-                return db.run('ROLLBACK', () => reject(saldoErr));
-              }
-
-              db.run('COMMIT', (commitErr) => {
-                if (commitErr) {
-                  return db.run('ROLLBACK', () => reject(commitErr));
-                }
-
-                resolve({ id, novoSaldo });
-              });
-            });
-          }
-        );
-      });
-    });
-  });
+const pagarConta = async (id, novoSaldo) => {
+  const db = await getDb();
+  db.run('UPDATE contas SET status = ? WHERE id = ? AND status = ?', ['pago', id, 'pendente']);
+  const changes = db.exec('SELECT changes() as c')[0].values[0][0];
+  if (changes === 0) throw new Error('Conta não encontrada ou já paga.');
+  db.run('UPDATE saldo SET valor = ? WHERE id = 1', [novoSaldo]);
+  saveDb();
+  return { id, novoSaldo };
 };
 
-const deleteConta = (id) => {
-  return new Promise((resolve, reject) => {
-    db.run('DELETE FROM contas WHERE id = ?', [id], function (err) {
-      if (err) {
-        return reject(err);
-      }
-      resolve(this.changes);
-    });
-  });
+const deleteConta = async (id) => {
+  const db = await getDb();
+  db.run('DELETE FROM contas WHERE id = ?', [id]);
+  const changes = db.exec('SELECT changes() as c')[0].values[0][0];
+  saveDb();
+  return changes;
 };
 
-const getSaldo = () => {
-  return new Promise((resolve, reject) => {
-    db.get('SELECT valor FROM saldo WHERE id = 1', (err, row) => {
-      if (err) {
-        return reject(err);
-      }
-      if (!row) {
-        return reject(new Error('Saldo não encontrado.'));
-      }
-      resolve(row.valor);
-    });
-  });
+const getSaldo = async () => {
+  const db = await getDb();
+  const result = db.exec('SELECT valor FROM saldo WHERE id = 1');
+  if (result.length === 0) throw new Error('Saldo não encontrado.');
+  return result[0].values[0][0];
 };
 
-const updateSaldo = (valor) => {
-  return new Promise((resolve, reject) => {
-    db.run('UPDATE saldo SET valor = ? WHERE id = 1', [valor], function (err) {
-      if (err) {
-        return reject(err);
-      }
-      if (this.changes === 0) {
-        return reject(new Error('Saldo não encontrado.'));
-      }
-      resolve({ valor });
-    });
-  });
+const updateSaldo = async (valor) => {
+  const db = await getDb();
+  db.run('UPDATE saldo SET valor = ? WHERE id = 1', [valor]);
+  const changes = db.exec('SELECT changes() as c')[0].values[0][0];
+  if (changes === 0) throw new Error('Saldo não encontrado.');
+  saveDb();
+  return { valor };
 };
 
 module.exports = {
