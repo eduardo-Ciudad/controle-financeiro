@@ -334,11 +334,10 @@ async function deleteConta(id) {
     if (!result.success) throw new Error(result.error || 'Erro ao deletar conta.');
 
     todasContas = todasContas.filter(c => c.id !== id);
-
-    await loadSaldo();
-    renderContas();
     updateSummary();
     updateCharts();
+    renderContas();
+    await loadSaldo();
     showToast('Conta removida.', 'info');
   } catch (err) {
     console.error('deleteConta:', err);
