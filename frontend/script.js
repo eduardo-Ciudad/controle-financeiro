@@ -1,7 +1,7 @@
 /* ================================================
    CONFIGURAÇÃO
    ================================================ */
-const API_BASE = 'http://localhost:3000';
+const API_BASE = 'https://controle-financeiro-api-owce.onrender.com';
 
 let todasContas = [];
 let filtroAtivo = 'todas';
